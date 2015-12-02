@@ -6,7 +6,7 @@
 -- Preamble
 --------------------------------------------------------------------------------
 
-module Lib2 where
+module RestrictedSequentCalculus where
 
 import           Control.Arrow         ((&&&))
 import           Control.Comonad.Store (peeks, pos)
