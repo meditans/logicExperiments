@@ -1,21 +1,23 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TemplateHaskell, TypeFamilies #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
-
+--------------------------------------------------------------------------------
 -- Preamble
+--------------------------------------------------------------------------------
 
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 module Lib2 where
 
-import Data.Tree
-import Data.Tree.Lens
-import Control.Lens
-import Control.Comonad.Store
-import Data.Monoid (Endo (..))
+import           Control.Comonad.Store
+import           Control.Lens
+import           Control.Monad         (guard)
+import           Data.List             (intersect, (\\))
+import           Data.Monoid           (Endo (..))
+import           Data.Tree
+import           Data.Tree.Lens
 
-
+--------------------------------------------------------------------------------
 -- Data Types
+--------------------------------------------------------------------------------
 
 data Proposition = Atom String
                  | Proposition :∧ Proposition
@@ -32,7 +34,7 @@ instance Show Proposition where
   show Top = ""
 
 -- I mantain a list of proposition on either side to leave open the possibility
--- for a classical logic sequent calculus (for the intuitionistic one a
+-- for a classical logic sequent calculus (for the intuitionistic one a single
 -- proposition would suffice).
 data Judgement = Judgement { _leftCtx  :: [Proposition]
                            , _rightCtx :: [Proposition]
@@ -54,8 +56,9 @@ instance (Show a) => Show (Examined a) where
 type ProofTree  = Tree (Examined Judgement)
 type SearchTree = Tree ProofTree
 
-
+--------------------------------------------------------------------------------
 -- Rules
+--------------------------------------------------------------------------------
 
 -- A questo punto, una regola non e' altro che, un traversal che mi fa vedere
 -- dove va bene, e l'attuale funzione che calcola, dato un posto locale, la
@@ -76,21 +79,25 @@ andR =  Rule "∧R"
         (\j -> j ^.. rightCtx . itraversed . (.:∧) . asIndex)
         (\j i -> map (\ps -> Judgement (j^.leftCtx) ps) $ distributeAt i (\(p1 :∧ p2) -> [p1,p2]) (j ^. rightCtx))
 
-rules = [andR, andL]
+initRule :: Rule
+initRule =  Rule "init"
+        (\j -> if null $ intersect (j^.rightCtx) (j^.leftCtx) then [] else [0])
+        (\j _ -> let inters = intersect (j^.rightCtx) (j^.leftCtx)
+                 in [(rightCtx %~ (\\inters)) . (leftCtx %~ (\\inters)) $ j])
 
-completelyApplyRule :: Rule -> Judgement -> [[Judgement]]
-completelyApplyRule r j = map (applyLocally r j) (findLoci r j)
+rules = [andR, andL, initRule]
 
-completelyApplyRule' :: Rule -> ProofTree -> [ProofTree]
-completelyApplyRule' r (Node (Unexamined j) []) = map constructTree (findLoci r j)
+completelyApplyRule :: Rule -> ProofTree -> [ProofTree]
+completelyApplyRule r (Node (Unexamined j) []) = map constructTree (findLoci r j)
   where constructTree = Node (Examined (name r) j) . map (\x -> Node (Unexamined x) []) . applyLocally r j
-completelyApplyRule' _ x = []
+completelyApplyRule _ x = []
 
 applyAllRules :: ProofTree -> [ProofTree]
-applyAllRules p = concatMap (\r -> completelyApplyRule' r p) rules
+applyAllRules p = concatMap (\r -> completelyApplyRule r p) rules
 
-
+--------------------------------------------------------------------------------
 -- Helper functions for rules
+--------------------------------------------------------------------------------
 
 substituteAt :: Int -> (a -> [a]) -> [a] -> [a]
 substituteAt i f xs = take i xs ++ f (xs!!i) ++ drop (i+1) xs
@@ -99,65 +106,40 @@ distributeAt :: Int -> (a -> [a]) -> [a] -> [[a]]
 distributeAt i f xs = zipWith substitute variations (repeat xs)
   where substitute a c = ix i .~ a $ c
         variations = f (xs !! i)
-
+
+--------------------------------------------------------------------------------
 -- Difficult part
+--------------------------------------------------------------------------------
 
--- Questa funzione mi consente di applicare una funzione alle foglie degli
--- alberi, in maniera da espanderle
--- finally = map (peeks foo) $ filter (isUnexaminedTree . pos) $ contexts tree
-
--- nel mio caso sarebbe un:
 isUnexaminedTree :: ProofTree -> Bool
 isUnexaminedTree (Node (Unexamined _) _) = True
 isUnexaminedTree _                       = False
 
--- Ho bisogno di
--- foo :: Proposition -> [Proposition] WHAT
+-- Se do una funzione che dato un proofTree mi restituisce le sue possibili
+-- derivazioni, ottengo una funzione che applica una sola volta una funzione
+-- alle foglie.
+distributeUponLeaves :: (ProofTree -> [ProofTree]) -> ProofTree -> [ProofTree]
+distributeUponLeaves f p = do
+  ctx    <- contexts p
+  guard  $ isUnexaminedTree (pos ctx)
+  newFoc <- f (pos ctx)
+  return $ peeks (const newFoc) ctx
 
--- Ovvero una funzione che applichi tutte le regole. Questa cosa puo' essere
--- facilmente decomposta in una funzione che applichi una sola regola in tutti i
--- posti possibili, e questa e' facile da scrivere
+-- Starting from a Judgement, this function generates all the search tree.
+generateSearchTree :: Judgement -> SearchTree
+generateSearchTree j = unfoldTree (\p -> (p, distributeUponLeaves applyAllRules p)) (Node (Unexamined j) [])
 
--- Questa funzione ritorna una lista di possibilita', WHAT. Il problema e' che i
--- due livelli di lista parlano di due cose diverse, perche' uno parla del fatto
--- che ci sono diverse possibilita', e questo va rappresentato con diversi rami
--- nell'albero delle prove, mentre l'altro dice che ci possono essere tante
--- premesse, cose che sono rami nell'albero della derivazione.
-
--- Risolverebbe il problema una cosa come:
--- again :: Rule -> Judgement -> [ProofTree]
-
--- secondo me lo risolverebbe, perche' a quel punto potrei semplicemente
--- astrarre sulle regole mettendo tutto assieme, e ottenere qualcosa nella
--- forma:
--- Judgement -> [ProofTree]
--- Che non e' molto diverso direttamente da
--- ProofTree -> [ProofTree]
--- Assumendo che l'albero cominci con una struttura di unexplored. A quel punto avrei quanto mi serve per generare
-
--- come vediamo ho ancora bisogno di qualcosina in piu', visto che nella
--- struttura che mi sto pensando questa cosa dovrebbe avere tipo ProofTree ->
--- ProofTree
-
-vediamo :: (ProofTree -> [ProofTree]) -> ProofTree -> [ProofTree]
-vediamo f p = concat $ do
-  x <- f p
-  return . map (peeks $ const x) . filter (isUnexaminedTree . pos) $ contexts p
-
--- unfoldTree :: (b -> (a, [b])) -> b -> Tree a
--- unfoldTree :: (ProofTree -> (ProofTree, [ProofTree])) -> ProofTree -> Tree ProofTree
-generate :: Judgement -> SearchTree
-generate j = unfoldTree (\p -> (p, vediamo applyAllRules p)) (Node (Unexamined j) [])
-
+-- Simple drawing utilities, mostly for debugging.
 drawProofTree :: (Show a) => Tree a -> String
 drawProofTree = unlines . map (\xs -> ">>> " ++ xs) . lines . drawTree . fmap show
 
 drawSearchTree :: SearchTree -> IO ()
 drawSearchTree = putStrLn . drawTree . fmap drawProofTree
 
+--------------------------------------------------------------------------------
+-- Contesti, proposizioni, ed esempi vari
+--------------------------------------------------------------------------------
 
-
--- contesti, proposizioni, ed esempi vari
 jud = Judgement [Atom "A" :∧ Atom "B", Atom "C"] [Atom "B" :∧ Atom "A"]
 
 exPrfTree = Node (Unexamined jud) []
