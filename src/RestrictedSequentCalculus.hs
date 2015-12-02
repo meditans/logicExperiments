@@ -53,7 +53,7 @@ data Judgement = Judgement { _leftCtx  :: S.Set Proposition
 makeLenses ''Judgement
 
 instance Show Judgement where
-  show (Judgement l r) = show l ++ " ⇒ " ++ show r
+  show (Judgement l r) = show (S.toList l) ++ " ⇒ " ++ show (S.toList r)
 
 
 --------------------------------------------------------- Proof and Search Trees
