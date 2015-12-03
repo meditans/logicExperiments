@@ -142,6 +142,11 @@ truthR = Rule "⊤R" (\j -> do
   guard (j ^. rightCtx == Top)
   return $ Node (Examined "⊤R" j) [Node Verified []])
 
+falsehoodL :: Rule
+falsehoodL = Rule "⊥L" (\j -> do
+  guard (j ^. leftCtx . contains Bottom)
+  return $ Node (Examined "⊥L" j) [Node Verified []])
+
 initRule :: Rule
 initRule =  Rule "init" (\j -> do
   guard  $ (j^.rightCtx) `S.member` (j^.leftCtx)
@@ -183,6 +188,7 @@ generateSearchTree j = unfoldTree (id &&& (distributeUponLeaves applyAllRules))
 --------------------------------------------------------------------------------
 -- Isolating an actual proof in the SearchTree
 --------------------------------------------------------------------------------
+
 isCompleteProof :: ProofTree -> Bool
 isCompleteProof p = and $ do
   ctx <- contexts p
@@ -236,3 +242,6 @@ tryTruthLeft = Judgement (S.fromList [Top]) (Atom "A")
 
 tryTruthRight :: Judgement
 tryTruthRight = Judgement (S.empty) (Top)
+
+tryFalsehoodLeft :: Judgement
+tryFalsehoodLeft = Judgement (S.fromList [Atom "A", Bottom]) (Atom "B")
