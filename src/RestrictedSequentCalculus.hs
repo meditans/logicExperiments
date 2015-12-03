@@ -48,24 +48,25 @@ instance Show Proposition where
 -- one a single proposition would suffice).
 
 data Judgement = Judgement { _leftCtx  :: S.Set Proposition
-                           , _rightCtx :: S.Set Proposition
+                           , _rightCtx :: Proposition
                            } deriving (Eq)
 makeLenses ''Judgement
 
 instance Show Judgement where
-  show (Judgement l r) = show (S.toList l) ++ " ⇒ " ++ show (S.toList r)
+  show (Judgement l r) = show (S.toList l) ++ " ⇒ " ++ show r
 
 
 --------------------------------------------------------- Proof and Search Trees
 
 type RuleDescription = String
 
-data Examined a = Unexamined a | Examined RuleDescription a deriving (Eq)
+data Examined a = Unexamined a | Examined RuleDescription a | Verified deriving (Eq)
 makePrisms ''Examined
 
 instance (Show a) => Show (Examined a) where
-  show (Unexamined e)     = "Unexamined: " ++ show e
+  show (Unexamined e)    = "Unexamined: " ++ show e
   show (Examined name e) = show e ++ "       (" ++ name ++ ")"
+  show Verified          = "Verified"
 
 type ProofTree  = Tree (Examined Judgement)
 type SearchTree = Tree ProofTree
@@ -90,11 +91,10 @@ andL =  Rule "∧L" (\j -> do
 
 andR :: Rule
 andR =  Rule "∧R" (\j -> do
-  (a,b) <- j ^.. rightCtx . folded . (.:∧)
+  (a,b) <- j ^.. rightCtx . (.:∧)
   return . buildDerivationStep "∧R" j $ do
     x <- [a,b]
-    return . (rightCtx . contains (a :∧ b) .~ False)
-           . (rightCtx . contains x         .~ True) $ j)
+    return . (rightCtx .~ x) $ j)
 
 orL :: Rule
 orL =  Rule "∨L" (\j -> do
@@ -106,53 +106,46 @@ orL =  Rule "∨L" (\j -> do
 
 orR1 :: Rule
 orR1 =  Rule "∨R1" (\j -> do
-  (a,b) <- j ^.. rightCtx . folded . (.:∨)
+  (a,b) <- j ^.. rightCtx . (.:∨)
   return . buildDerivationStep "∨R1" j . singleton
-         . (rightCtx . contains (a :∨ b) .~ False)
-         . (rightCtx . contains a         .~ True) $ j)
+         . (rightCtx .~ a) $ j)
 
 orR2 :: Rule
 orR2 =  Rule "∨R2" (\j -> do
-  (a,b) <- j ^.. rightCtx . folded . (.:∨)
+  (a,b) <- j ^.. rightCtx . (.:∨)
   return . buildDerivationStep "∨R2" j . singleton
-         . (rightCtx . contains (a :∨ b) .~ False)
-         . (rightCtx . contains b         .~ True) $ j)
+         . (rightCtx .~ b) $ j)
 
 implicationL :: Rule
 implicationL = Rule "⊃L" (\j -> do
   (a,b) <- j ^.. leftCtx  . folded . (.:⊃)
-  c     <- j ^.. rightCtx . folded
+  c     <- j ^.. rightCtx
   return . buildDerivationStep "⊃L" j $
-    [ (rightCtx . contains a .~ True) . (rightCtx . contains c .~ False) $ j
+    [ (rightCtx .~ a) $ j
     , (leftCtx  . contains b .~ True) . (leftCtx . contains (a :⊃ b) .~ False) $ j ])
 
 implicationR :: Rule
 implicationR = Rule "⊃R" (\j -> do
-  (a,b) <- j ^.. rightCtx . folded . (.:⊃)
+  (a,b) <- j ^.. rightCtx . (.:⊃)
   return . buildDerivationStep "⊃R" j . singleton
          . (leftCtx  . contains a .~ True)
-         . (rightCtx . contains b .~ True)
-         . (rightCtx . contains (a :⊃ b) .~ False) $ j)
+         . (rightCtx .~ b) $ j)
 
 truthL :: Rule
 truthL = Rule "⊤L" (\j -> do
+  guard (j ^. leftCtx . contains Top == True)
   return . buildDerivationStep "⊤L" j . singleton
          . (leftCtx . contains Top .~ False) $ j)
 
 truthR :: Rule
 truthR = Rule "⊤R" (\j -> do
-  guard (j ^. rightCtx . contains Top)
-  return . buildDerivationStep "⊤R" j . singleton
-         . (rightCtx . contains Top .~ False) $ j)
+  guard (j ^. rightCtx == Top)
+  return $ Node (Examined "⊤R" j) [Node Verified []])
 
 initRule :: Rule
 initRule =  Rule "init" (\j -> do
-  let common = (j^.leftCtx) `S.intersection` (j^.rightCtx)
-  guard (not $ S.null common)
-  return . buildDerivationStep "init" j . singleton
-         . (leftCtx  %~ (`S.difference` common))
-         . (rightCtx %~ (`S.difference` common))
-         $ j)
+  guard  $ (j^.rightCtx) `S.member` (j^.leftCtx)
+  return $ Node (Examined "init" j) [Node Verified []])
 
 rules :: [Rule]
 rules = [andR, andL, orR1, orR2, orL, implicationR, implicationL, truthR, truthR, initRule]
@@ -167,6 +160,10 @@ applyAllRules p = concatMap (flip applyRule p) rules
 isUnexaminedTree :: ProofTree -> Bool
 isUnexaminedTree (Node (Unexamined _) _) = True
 isUnexaminedTree _                       = False
+
+isVerifiedTree :: ProofTree -> Bool
+isVerifiedTree (Node Verified _) = True
+isVerifiedTree _                 = False
 
 rootJudgement :: ProofTree -> Judgement
 rootJudgement (Node (Unexamined j) _) = j
@@ -189,8 +186,7 @@ generateSearchTree j = unfoldTree (id &&& (distributeUponLeaves applyAllRules))
 isCompleteProof :: ProofTree -> Bool
 isCompleteProof p = and $ do
   ctx <- contexts p
-  guard $ isUnexaminedTree (pos ctx)
-  return $ (pos ctx ^. to rootJudgement . rightCtx) == S.empty
+  return . not . isUnexaminedTree $ pos ctx
 
 prove :: Judgement -> Maybe ProofTree
 prove j = j ^? to generateSearchTree . to flatten . traversed . filtered isCompleteProof
@@ -199,11 +195,10 @@ prove j = j ^? to generateSearchTree . to flatten . traversed . filtered isCompl
 -- Simple drawing utilities
 --------------------------------------------------------------------------------
 
-drawProofTree :: (Show a) => Tree a -> String
-drawProofTree = unlines . map (\xs -> ">>> " ++ xs) . lines . drawTree . fmap show
-
 drawSearchTree :: SearchTree -> IO ()
 drawSearchTree = putStrLn . drawTree . fmap drawProofTree
+  where drawProofTree = unlines . map (\xs -> ">>> " ++ xs)
+                      . lines . drawTree . fmap show
 
 drawProof :: Judgement -> IO ()
 drawProof j = maybe (putStrLn "I didn't found a proof :(")
@@ -218,33 +213,26 @@ singleton :: a -> [a]
 singleton x = [x]
 
 jud :: Judgement
-jud = Judgement (S.fromList [Atom "A" :∧ Atom "B", Atom "C"])
-                (S.fromList [Atom "B" :∧ Atom "A"])
-
-jud2 :: Judgement
-jud2 = Judgement (S.fromList []) (S.fromList [(Atom "A" :∧ Atom "B") :⊃ (Atom "B" :∧ Atom "A")])
-
-exPrfTree :: ProofTree
-exPrfTree = Node (Unexamined jud2) []
+jud = Judgement (S.fromList []) ((Atom "A" :∧ Atom "B") :⊃ (Atom "B" :∧ Atom "A"))
 
 tryImplicationLeft :: Judgement
 tryImplicationLeft = Judgement (S.fromList [Atom "A" :⊃ Atom "B"])
-                               (S.fromList [Atom "C", Atom "D"])
+                               (Atom "C")
 
 tryImplicationRight :: Judgement
 tryImplicationRight = Judgement (S.empty)
-                                (S.fromList [Atom "A" :⊃ Atom "B"])
+                                (Atom "A" :⊃ Atom "B")
 
 tryOrLeft :: Judgement
 tryOrLeft = Judgement (S.fromList [Atom "A" :∨ Atom "B"])
-                      (S.empty)
+                      (Atom "C")
 
 tryOrRight :: Judgement
 tryOrRight = Judgement (S.empty)
-                       (S.fromList [Atom "A" :∨ Atom "B"])
+                       (Atom "A" :∨ Atom "B")
 
 tryTruthLeft :: Judgement
-tryTruthLeft = Judgement (S.fromList [Top]) (S.empty)
+tryTruthLeft = Judgement (S.fromList [Top]) (Atom "A")
 
 tryTruthRight :: Judgement
-tryTruthRight = Judgement (S.empty) (S.fromList [Top])
+tryTruthRight = Judgement (S.empty) (Top)
