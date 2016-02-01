@@ -287,13 +287,17 @@ tryFalsehoodLeft = Judgement (S.fromList [Atom "A", Bottom]) (Atom "B")
 -- LaTeX display of proofs
 --------------------------------------------------------------------------------
 
-outputLatexProof :: Judgement -> IO ()
-outputLatexProof j = maybe
+latexProof :: Judgement -> IO ()
+latexProof j = maybe
   (putStrLn "I didn't find a proof.")
-  (\prf -> renderFile "proof.tex" $ preamble <> document (toLaTeX prf))
+  latexProofTree
   (prove j)
+
+latexProofTree :: ProofTree -> IO ()
+latexProofTree p = renderFile "proof.tex" $ preamble <> document (toLaTeX p)
   where
     preamble = documentclass [FontSize $ Pt 12] "article"
+            <> importGeometry [GPaperHeight (Cm 40), GPaperWidth (Cm 40)]
             <> usepackage [] "amssymb"
             <> usepackage [] "latexsym"
             <> usepackage [] "bussproofs"
