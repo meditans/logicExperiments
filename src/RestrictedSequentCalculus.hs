@@ -10,19 +10,20 @@
 
 module RestrictedSequentCalculus where
 
-import           Control.Arrow               ((&&&))
-import           Control.Comonad.Store       (peeks, pos)
+import           Control.Arrow                ((&&&))
+import           Control.Comonad.Store        (peek, peeks, pos)
 import           Control.Lens
-import           Control.Monad               (guard)
-import           Data.List                   (intersect, intersperse, (\\))
-import           Data.Monoid                 (Endo (..))
-import qualified Data.Set                    as S
-import           Data.Tree                   (Tree (..), drawTree, flatten,
-                                              unfoldTree)
-import           Data.Text                   (pack)
-import           Text.LaTeX                  hiding (Bottom, Top)
+import           Control.Monad                (guard)
+import           Data.List                    (intersect, intersperse, (\\))
+import           Data.Monoid                  (Endo (..))
+import qualified Data.Set                     as S
+import           Data.Text                    (pack)
+import           Data.Tree                    (Tree (..), drawTree, flatten,
+                                               unfoldTree)
+import           Text.LaTeX                   hiding (Bottom, Top)
 import           Text.LaTeX.Base.Class
-import           Text.LaTeX.Packages.AMSMath hiding (to)
+import           Text.LaTeX.Packages.AMSMath  hiding (to)
+import           Text.LaTeX.Packages.Geometry
 
 --------------------------------------------------------------------------------
 -- Data Types
@@ -59,7 +60,7 @@ instance Show Judgement where
 
 --------------------------------------------------------- Proof and Search Trees
 
-data RuleDescription = RuleDescription { ruleName :: String
+data RuleDescription = RuleDescription { ruleName  :: String
                                        , ruleLaTeX :: LaTeX
                                        } deriving (Eq, Show)
 
@@ -192,20 +193,29 @@ isVerifiedTree :: ProofTree -> Bool
 isVerifiedTree (Node Verified _) = True
 isVerifiedTree _                 = False
 
-rootJudgement :: ProofTree -> Judgement
-rootJudgement (Node (Unexamined j) _) = j
-rootJudgement (Node (Examined _ j) _) = j
-
 distributeUponLeaves :: (Judgement -> [ProofTree]) -> ProofTree -> [ProofTree]
 distributeUponLeaves f p = do
   ctx    <- contexts p
   guard  $ isUnexaminedTree (pos ctx)
   newFoc <- f (rootJudgement . pos $ ctx)
-  return $ peeks (const newFoc) ctx
+  let newTree = peek newFoc ctx
+  guard  $ unencumbered [] newTree
+  return newTree
+ where
+  rootJudgement (Node (Unexamined j) _) = j
+
 
 generateSearchTree :: Judgement -> SearchTree
 generateSearchTree j = unfoldTree (id &&& (distributeUponLeaves applyAllRules))
                                   (Node (Unexamined j) [])
+
+unencumbered :: [Judgement] -> ProofTree -> Bool
+unencumbered js (Node Verified _) = True
+unencumbered js (Node ej ts) = (unexamine ej `notElem` js)
+                            && all (unencumbered (unexamine ej : js)) ts
+  where
+    unexamine (Unexamined j) = j
+    unexamine (Examined _ j) = j
 
 --------------------------------------------------------------------------------
 -- Isolating an actual proof in the SearchTree
