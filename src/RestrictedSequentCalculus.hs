@@ -53,10 +53,6 @@ instance Show Proposition where
 
 --------------------------------------------------------------------- Judgements
 
--- I chose to mantain a list of proposition on either side to leave open the
--- possibility for a classical logic sequent calculus (for the intuitionistic
--- one a single proposition would suffice).
-
 data Judgement = Judgement { _leftCtx  :: S.Set Proposition
                            , _rightCtx :: Proposition
                            } deriving (Eq)
@@ -71,7 +67,6 @@ instance Show Judgement where
 data RuleDescription = RuleDescription { ruleName :: String
                                        , ruleLaTeX :: LaTeX
                                        } deriving (Eq, Show)
-
 
 data Examined a = Unexamined a
                 | Examined RuleDescription a
