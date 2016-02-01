@@ -68,7 +68,10 @@ instance Show Judgement where
 
 --------------------------------------------------------- Proof and Search Trees
 
-type RuleDescription = String
+data RuleDescription = RuleDescription { ruleName :: String
+                                       , ruleLaTeX :: LaTeX
+                                       } deriving (Eq, Show)
+
 
 data Examined a = Unexamined a
                 | Examined RuleDescription a
@@ -77,92 +80,106 @@ makePrisms ''Examined
 
 instance (Show a) => Show (Examined a) where
   show (Unexamined e)    = "Unexamined: " ++ show e
-  show (Examined name e) = show e ++ "       (" ++ name ++ ")"
+  show (Examined desc e) = show e ++ "       (" ++ ruleName desc ++ ")"
   show Verified          = "Verified"
 
 type ProofTree  = Tree (Examined Judgement)
 type SearchTree = Tree ProofTree
 
-buildDerivationStep :: String -> Judgement -> [Judgement] -> ProofTree
+buildDerivationStep :: RuleDescription -> Judgement -> [Judgement] -> ProofTree
 buildDerivationStep n jdg jdgs = Node (Examined n jdg) $ map (\j -> Node (Unexamined j) []) jdgs
 
 --------------------------------------------------------------------------------
 -- Rules
 --------------------------------------------------------------------------------
 
-data Rule = Rule { name      :: RuleDescription
-                 , applyRule :: Judgement -> [ProofTree] }
+data Rule = Rule { description :: RuleDescription
+                 , applyRule   :: Judgement -> [ProofTree] }
 
 andL :: Rule
-andL =  Rule "∧L" (\j -> do
+andL =  Rule desc (\j -> do
   (a,b) <- j ^.. leftCtx . folded . (.:∧)
-  return . buildDerivationStep "∧L" j . singleton
+  return . buildDerivationStep desc j . singleton
     . (leftCtx . contains (a :∧ b) .~ False)
     . (leftCtx . contains a         .~ True)
     . (leftCtx . contains b         .~ True) $ j)
+  where desc = (RuleDescription "∧L" (comm0 "wedge" <> "L"))
 
 andR :: Rule
-andR =  Rule "∧R" (\j -> do
+andR =  Rule desc (\j -> do
   (a,b) <- j ^.. rightCtx . (.:∧)
-  return . buildDerivationStep "∧R" j $ do
+  return . buildDerivationStep desc j $ do
     x <- [a,b]
     return . (rightCtx .~ x) $ j)
+  where desc = RuleDescription "∧R" (comm0 "wedge" <> "R")
 
 orL :: Rule
-orL =  Rule "∨L" (\j -> do
+orL =  Rule desc (\j -> do
   (a,b) <- j ^.. leftCtx . folded . (.:∨)
-  return . buildDerivationStep "∨L" j $ do
+  return . buildDerivationStep desc j $ do
     x <- [a,b]
     return . (leftCtx . contains (a :∨ b) .~ False)
            . (leftCtx . contains x         .~ True) $ j)
+  where desc = RuleDescription "∨L" (comm0 "vee" <> "L")
 
 orR1 :: Rule
-orR1 =  Rule "∨R1" (\j -> do
+orR1 =  Rule desc (\j -> do
   (a,b) <- j ^.. rightCtx . (.:∨)
-  return . buildDerivationStep "∨R1" j . singleton
+  return . buildDerivationStep desc j . singleton
          . (rightCtx .~ a) $ j)
+  where desc = RuleDescription "∨R1" (comm0 "vee" <> "R1")
 
 orR2 :: Rule
-orR2 =  Rule "∨R2" (\j -> do
+orR2 =  Rule desc (\j -> do
   (a,b) <- j ^.. rightCtx . (.:∨)
-  return . buildDerivationStep "∨R2" j . singleton
+  return . buildDerivationStep desc j . singleton
          . (rightCtx .~ b) $ j)
+  where desc = RuleDescription "∨R2" (comm0 "vee" <> "R2")
+
 
 implicationL :: Rule
-implicationL = Rule "⊃L" (\j -> do
+implicationL = Rule desc (\j -> do
   (a,b) <- j ^.. leftCtx  . folded . (.:⊃)
   c     <- j ^.. rightCtx
-  return . buildDerivationStep "⊃L" j $
+  return . buildDerivationStep desc j $
     [ (rightCtx .~ a) $ j
-    , (leftCtx  . contains b .~ True) . (leftCtx . contains (a :⊃ b) .~ False) $ j ])
+    , (leftCtx  . contains b .~ True)
+    . (leftCtx . contains (a :⊃ b) .~ False) $ j ])
+  where desc = RuleDescription "⊃L"
+               (comm0 "supset" <> comm0 "!" <> comm0 "!" <> "L")
 
 implicationR :: Rule
-implicationR = Rule "⊃R" (\j -> do
+implicationR = Rule desc (\j -> do
   (a,b) <- j ^.. rightCtx . (.:⊃)
-  return . buildDerivationStep "⊃R" j . singleton
+  return . buildDerivationStep desc j . singleton
          . (leftCtx  . contains a .~ True)
          . (rightCtx .~ b) $ j)
+  where desc = RuleDescription "⊃R"
+               (comm0 "supset" <> comm0 "!" <> comm0 "!" <> "R")
 
 truthL :: Rule
-truthL = Rule "⊤L" (\j -> do
+truthL = Rule desc (\j -> do
   guard (j ^. leftCtx . contains Top == True)
-  return . buildDerivationStep "⊤L" j . singleton
+  return . buildDerivationStep desc j . singleton
          . (leftCtx . contains Top .~ False) $ j)
+  where desc = RuleDescription "⊤L" (comm0 "top" <> "L")
 
 truthR :: Rule
-truthR = Rule "⊤R" (\j -> do
+truthR = Rule desc (\j -> do
   guard (j ^. rightCtx == Top)
-  return $ Node (Examined "⊤R" j) [Node Verified []])
+  return $ Node (Examined desc j) [Node Verified []])
+  where desc = RuleDescription "⊤R" (comm0 "top" <> "R")
 
 falsehoodL :: Rule
-falsehoodL = Rule "⊥L" (\j -> do
+falsehoodL = Rule (RuleDescription "⊥L" (comm0 "bot" <> "L")) (\j -> do
   guard (j ^. leftCtx . contains Bottom)
-  return $ Node (Examined "⊥L" j) [Node Verified []])
+  return $ Node (Examined (RuleDescription "⊥L" (comm0 "bot" <> "L")) j)
+                          [Node Verified []])
 
 initRule :: Rule
-initRule =  Rule "init" (\j -> do
+initRule =  Rule (RuleDescription "init" "init") (\j -> do
   guard  $ (j^.rightCtx) `S.member` (j^.leftCtx)
-  return $ Node (Examined "init" j) [Node Verified []])
+  return $ Node (Examined (RuleDescription "init" "init") j) [Node Verified []])
 
 rules :: [Rule]
 rules = [initRule, andR, andL, orR1, orR2, orL, implicationR, implicationL, truthR, truthL, falsehoodL]
@@ -277,37 +294,20 @@ tryFalsehoodLeft = Judgement (S.fromList [Atom "A", Bottom]) (Atom "B")
 -- LaTeX display of proofs
 --------------------------------------------------------------------------------
 
-preamble :: LaTeX
-preamble = documentclass [FontSize $ Pt 12] "article"
-         <> usepackage [] "amssymb"
-         <> usepackage [] "latexsym"
-         <> usepackage [] "bussproofs"
+outputLatexProof :: Judgement -> IO ()
+outputLatexProof j = maybe
+  (putStrLn "I didn't find a proof.")
+  (\prf -> renderFile "proof.tex" $ preamble <> document (toLaTeX prf))
+  (prove j)
+  where
+    preamble = documentclass [FontSize $ Pt 12] "article"
+            <> usepackage [] "amssymb"
+            <> usepackage [] "latexsym"
+            <> usepackage [] "bussproofs"
 
-outputLatex :: Judgement -> IO ()
-outputLatex j = renderFile "here.tex" (preamble <> uuu j)
-
-uuu :: Judgement -> LaTeX
-uuu j = let (Just prf) = prove j
-        in document $ toLaTeX prf
-
-translate "∧R"  = raw "$\\wedge R$"
-translate "∧L"  = raw "$\\wedge L$"
-translate "∨R1" = raw "$\\vee R1$"
-translate "∨R2" = raw "$\\vee R2$"
-translate "∨L"  = raw "$\\vee L$"
-translate "⊃R"  = raw "$\\subset\\!R$"
-translate "⊃L"  = raw "$\\subset\\!L$"
-translate "⊤R"  = raw "$\\top R$"
-translate "⊤L"  = raw "$\\top L$"
-translate "⊥L"  = raw "$\\bot L$"
-translate "init" = raw "$init$"
-
-inference :: Int -> Judgement -> LaTeX
-inference 1 j = comm1 "UnaryInfC"      (toLaTeX j)
-inference 2 j = comm1 "BinaryInfC"     (toLaTeX j)
-inference 3 j = comm1 "TrinaryInfC"    (toLaTeX j)
-inference 4 j = comm1 "QuaternaryInfC" (toLaTeX j)
-inference 5 j = comm1 "QuinaryInfC"    (toLaTeX j)
+--------------------------------------------------------------------------------
+-- ToLaTeX typeclass
+--------------------------------------------------------------------------------
 
 class ToLaTeX a where
   toLaTeX :: a -> LaTeX
@@ -338,5 +338,11 @@ instance ToLaTeX ProofTree where
             Node (Unexamined    j) js -> comm1 "AxiomC" "what"
             Node (Examined desc j) js -> mconcat $
               [ mconcat . map render $ js
-              , comm1 "RightLabel" (scriptsize $ translate desc)
-              , inference (length js) j ]
+              , comm1 "RightLabel" (scriptsize . math $ ruleLaTeX desc)
+              , comm1 (inferences js) (toLaTeX j)]
+          inferences js = case length js of
+            1 -> "UnaryInfC"
+            2 -> "BinaryInfC"
+            3 -> "TrinaryInfC"
+            4 -> "QuaternaryInfC"
+            5 -> "QuinaryInfC"
