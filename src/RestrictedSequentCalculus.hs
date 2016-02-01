@@ -166,15 +166,16 @@ truthR = Rule desc (\j -> do
   where desc = RuleDescription "⊤R" (comm0 "top" <> "R")
 
 falsehoodL :: Rule
-falsehoodL = Rule (RuleDescription "⊥L" (comm0 "bot" <> "L")) (\j -> do
+falsehoodL = Rule desc (\j -> do
   guard (j ^. leftCtx . contains Bottom)
-  return $ Node (Examined (RuleDescription "⊥L" (comm0 "bot" <> "L")) j)
-                          [Node Verified []])
+  return $ Node (Examined desc j) [Node Verified []])
+  where desc = RuleDescription "⊥L" (comm0 "bot" <> "L")
 
 initRule :: Rule
-initRule =  Rule (RuleDescription "init" "init") (\j -> do
+initRule =  Rule desc (\j -> do
   guard  $ (j^.rightCtx) `S.member` (j^.leftCtx)
-  return $ Node (Examined (RuleDescription "init" "init") j) [Node Verified []])
+  return $ Node (Examined desc j) [Node Verified []])
+  where desc = (RuleDescription "init" "init")
 
 rules :: [Rule]
 rules = [initRule, andR, andL, orR1, orR2, orL, implicationR, implicationL, truthR, truthL, falsehoodL]
