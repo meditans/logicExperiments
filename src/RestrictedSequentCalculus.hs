@@ -1,10 +1,8 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
-
 
 --------------------------------------------------------------------------------
 -- Preamble
@@ -21,7 +19,6 @@ import           Data.Monoid                 (Endo (..))
 import qualified Data.Set                    as S
 import           Data.Tree                   (Tree (..), drawTree, flatten,
                                               unfoldTree)
-
 import           Data.Text                   (pack)
 import           Text.LaTeX                  hiding (Bottom, Top)
 import           Text.LaTeX.Base.Class
@@ -59,7 +56,6 @@ makeLenses ''Judgement
 
 instance Show Judgement where
   show (Judgement l r) = show (S.toList l) ++ " ⇒ " ++ show r
-
 
 --------------------------------------------------------- Proof and Search Trees
 
@@ -132,7 +128,6 @@ orR2 =  Rule desc (\j -> do
   return . buildDerivationStep desc j . singleton
          . (rightCtx .~ b) $ j)
   where desc = RuleDescription "∨R2" (comm0 "vee" <> "R2")
-
 
 implicationL :: Rule
 implicationL = Rule desc (\j -> do
