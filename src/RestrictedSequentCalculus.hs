@@ -233,6 +233,21 @@ singleton x = [x]
 jud :: Judgement
 jud = Judgement (S.fromList []) ((Atom "A" :∧ Atom "B") :⊃ (Atom "B" :∧ Atom "A"))
 
+jud2 :: Judgement
+jud2 = Judgement (S.fromList []) $ ((Atom "A" :∧ Atom "B") :∧ Atom "C")
+                               :⊃ (Atom "A" :∧ (Atom "B" :∧ Atom "C"))
+
+jud3 :: Judgement
+jud3 = Judgement (S.fromList []) $ (Bottom :⊃ Atom "A")
+
+jud4 :: Judgement
+jud4 = Judgement (S.fromList []) $ Atom "A" :⊃ (Atom "B" :⊃ (Atom "A" :∧ Atom "B"))
+
+jud5 :: Judgement
+jud5 = Judgement (S.fromList []) $ (Atom "A" :⊃ Atom "C") :⊃
+                                   ((Atom "B" :⊃ Atom "C") :⊃
+                                   ((Atom "A" :∨ Atom "B") :⊃ Atom "C"))
+
 tryImplicationLeft :: Judgement
 tryImplicationLeft = Judgement (S.fromList [Atom "A" :⊃ Atom "B"])
                                (Atom "C")
