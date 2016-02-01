@@ -1,6 +1,10 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
+
 
 --------------------------------------------------------------------------------
 -- Preamble
@@ -8,15 +12,21 @@
 
 module RestrictedSequentCalculus where
 
-import           Control.Arrow         ((&&&))
-import           Control.Comonad.Store (peeks, pos)
+import           Control.Arrow               ((&&&))
+import           Control.Comonad.Store       (peeks, pos)
 import           Control.Lens
-import           Control.Monad         (guard)
-import           Data.List             (intersect, (\\))
-import           Data.Monoid           (Endo (..))
-import qualified Data.Set              as S
-import           Data.Tree             (Tree (..), drawTree, flatten,
-                                        unfoldTree)
+import           Control.Monad               (guard)
+import           Data.List                   (intersect, intersperse, (\\))
+import           Data.Monoid                 (Endo (..))
+import qualified Data.Set                    as S
+import           Data.Tree                   (Tree (..), drawTree, flatten,
+                                              unfoldTree)
+
+import           Data.Text                   (pack)
+import           Text.LaTeX                  hiding (Bottom, Top)
+import           Text.LaTeX.Base.Class
+import           Text.LaTeX.Packages.AMSMath hiding (to)
+-- import Data.Monoid (msum)
 
 --------------------------------------------------------------------------------
 -- Data Types
@@ -245,3 +255,71 @@ tryTruthRight = Judgement (S.empty) (Top)
 
 tryFalsehoodLeft :: Judgement
 tryFalsehoodLeft = Judgement (S.fromList [Atom "A", Bottom]) (Atom "B")
+
+--------------------------------------------------------------------------------
+-- LaTeX display of proofs
+--------------------------------------------------------------------------------
+
+preamble :: LaTeX
+preamble = documentclass [FontSize $ Pt 12] "article"
+         <> usepackage [] "amssymb"
+         <> usepackage [] "latexsym"
+         <> usepackage [] "bussproofs"
+
+outputLatex :: Judgement -> IO ()
+outputLatex j = renderFile "here.tex" (preamble <> uuu j)
+
+uuu :: Judgement -> LaTeX
+uuu j = let (Just prf) = prove j
+        in document $ toLaTeX prf
+
+translate "∧R"  = raw "$\\wedge R$"
+translate "∧L"  = raw "$\\wedge L$"
+translate "∨R1" = raw "$\\vee R1$"
+translate "∨R2" = raw "$\\vee R2$"
+translate "∨L"  = raw "$\\vee L$"
+translate "⊃R"  = raw "$\\subset\\!R$"
+translate "⊃L"  = raw "$\\subset\\!L$"
+translate "⊤R"  = raw "$\\top R$"
+translate "⊤L"  = raw "$\\top L$"
+translate "⊥L"  = raw "$\\bot L$"
+translate "init" = raw "$init$"
+
+inference :: Int -> Judgement -> LaTeX
+inference 1 j = comm1 "UnaryInfC"      (toLaTeX j)
+inference 2 j = comm1 "BinaryInfC"     (toLaTeX j)
+inference 3 j = comm1 "TrinaryInfC"    (toLaTeX j)
+inference 4 j = comm1 "QuaternaryInfC" (toLaTeX j)
+inference 5 j = comm1 "QuinaryInfC"    (toLaTeX j)
+
+class ToLaTeX a where
+  toLaTeX :: a -> LaTeX
+
+instance ToLaTeX Proposition where
+  toLaTeX p = case p of
+    Atom x   -> raw (pack x)
+    x1 :∧ x2 -> parenthesis $ wedge  (toLaTeX x1) (toLaTeX x2)
+    x1 :∨ x2 -> parenthesis $ vee    (toLaTeX x1) (toLaTeX x2)
+    x1 :⊃ x2 -> parenthesis $ subset (toLaTeX x1) (toLaTeX x2)
+    Top    -> comm0 "top"
+    Bottom -> comm0 "bot"
+    where parenthesis x = between x "(" ")"
+
+instance ToLaTeX Judgement where
+  toLaTeX (Judgement lhs rhs) = (math . mconcat)
+    [ (mconcat . intersperse ",") (map toLaTeX (S.toList lhs))
+    , comm0 "Longrightarrow"
+    , toLaTeX rhs ]
+
+instance ToLaTeX ProofTree where
+  toLaTeX p = mconcat
+    [ comm1 "begin" "prooftree"
+    , render p
+    , comm1 "end" "prooftree" ]
+    where render p = case p of
+            Node  Verified         _  -> comm0 "AxiomC"
+            Node (Unexamined    j) js -> comm1 "AxiomC" "what"
+            Node (Examined desc j) js -> mconcat $
+              [ mconcat . map render $ js
+              , comm1 "RightLabel" (scriptsize $ translate desc)
+              , inference (length js) j ]
