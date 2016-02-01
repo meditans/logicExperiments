@@ -26,7 +26,6 @@ import           Data.Text                   (pack)
 import           Text.LaTeX                  hiding (Bottom, Top)
 import           Text.LaTeX.Base.Class
 import           Text.LaTeX.Packages.AMSMath hiding (to)
--- import Data.Monoid (msum)
 
 --------------------------------------------------------------------------------
 -- Data Types
@@ -81,8 +80,11 @@ instance (Show a) => Show (Examined a) where
 type ProofTree  = Tree (Examined Judgement)
 type SearchTree = Tree ProofTree
 
+-- | Given the description of a rule, a judgement j, and a list of judgement
+--   that derive from j, builds the corresponding ProofTree.
 buildDerivationStep :: RuleDescription -> Judgement -> [Judgement] -> ProofTree
-buildDerivationStep n jdg jdgs = Node (Examined n jdg) $ map (\j -> Node (Unexamined j) []) jdgs
+buildDerivationStep n jdg jdgs = Node (Examined n jdg) (map toTree jdgs)
+  where toTree j = Node (Unexamined j) []
 
 --------------------------------------------------------------------------------
 -- Rules
