@@ -70,7 +70,9 @@ instance Show Judgement where
 
 type RuleDescription = String
 
-data Examined a = Unexamined a | Examined RuleDescription a | Verified deriving (Eq)
+data Examined a = Unexamined a
+                | Examined RuleDescription a
+                | Verified deriving (Eq)
 makePrisms ''Examined
 
 instance (Show a) => Show (Examined a) where
@@ -163,7 +165,7 @@ initRule =  Rule "init" (\j -> do
   return $ Node (Examined "init" j) [Node Verified []])
 
 rules :: [Rule]
-rules = [andR, andL, orR1, orR2, orL, implicationR, implicationL, truthR, truthR, initRule]
+rules = [initRule, andR, andL, orR1, orR2, orL, implicationR, implicationL, truthR, truthL, falsehoodL]
 
 applyAllRules :: Judgement -> [ProofTree]
 applyAllRules p = concatMap (flip applyRule p) rules
