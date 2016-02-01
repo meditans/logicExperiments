@@ -331,16 +331,17 @@ instance ToLaTeX ProofTree where
     [ comm1 "begin" "prooftree"
     , render p
     , comm1 "end" "prooftree" ]
-    where render p = case p of
-            Node  Verified         _  -> comm0 "AxiomC"
-            Node (Unexamined    j) js -> comm1 "AxiomC" "what"
-            Node (Examined desc j) js -> mconcat $
-              [ mconcat . map render $ js
-              , comm1 "RightLabel" (scriptsize . math $ ruleLaTeX desc)
-              , comm1 (inferences js) (toLaTeX j)]
-          inferences js = case length js of
-            1 -> "UnaryInfC"
-            2 -> "BinaryInfC"
-            3 -> "TrinaryInfC"
-            4 -> "QuaternaryInfC"
-            5 -> "QuinaryInfC"
+    where
+      render p = case p of
+        Node  Verified         _  -> comm0 "AxiomC"
+        Node (Unexamined    j) js -> comm1 "AxiomC" "what"
+        Node (Examined desc j) js -> mconcat $
+          [ (mconcat . map render) js
+          , comm1 "RightLabel" (scriptsize . math $ ruleLaTeX desc)
+          , comm1 (inferences js) (toLaTeX j)]
+      inferences js = case length js of
+        1 -> "UnaryInfC"
+        2 -> "BinaryInfC"
+        3 -> "TrinaryInfC"
+        4 -> "QuaternaryInfC"
+        5 -> "QuinaryInfC"
