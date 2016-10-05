@@ -1,11 +1,11 @@
 * Logic experiments
 
 This is a proof of concept theorem prover for a restricted sequent calculus done
-for the people of `#narrative-ai` in order to showcase a simple architecture in
+for the people of =#narrative-ai= in order to showcase a simple architecture in
 which the rules of the calculus are decoupled from the rules of proof search.
 
 The design is done in such a way that a user of the library should be able to
-specify the rules of the logic he's interested in, and get a prover to do
+specify only the rules of the logic he's interested in, and get a prover to do
 experiments in that logic (we were interested in modal logics in general, and
 epistemic logic in particular, to model the internal representation of agents).
 
@@ -13,4 +13,10 @@ The code makes heavy uses of lens library, both as a general language and for
 the features in =Control.Lens.Plated=. The simple file contains the definitions
 of the data types and rules for the restricted sequent calculus, generic logic
 for proving in a search tree, example judgements to try and instances to display
-the proof tree in \LaTeX (via HaTeX and the bussproofs library).
+the proof tree in LaTeX (via HaTeX and the bussproofs package).
+
+For example, calling =latexProof jud5= in a repl generates a =tex= file that,
+when compiled, yields this proof:
+
+#+CAPTION: example proof
+[[./exampleProof.png]]
